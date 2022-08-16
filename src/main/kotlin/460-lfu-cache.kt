@@ -12,12 +12,6 @@ class LFUCache(val capacity: Int) {
         }
     }
 
-    // Keep track of the frequency to achieve O(1)
-    // Map: frequency -> nodes (key, val, freq)
-    // 1 -> (A, 10, 1), (B, 11, 1)
-    // 2 -> (C, 12, 2)
-    // When it is a tie (nodes having the same frequency), the order will be MRU -> LRU.
-
     class FrequentNodes () {
         // list of nodes in a least recently order
         //  [most recently used node, ..., least recently used node]
@@ -84,28 +78,20 @@ class LFUCache(val capacity: Int) {
         }
     }
 
+    // Keep track the minimum frequency for an eviction if the cache is full.
     var minFrequency = 0
-    var head: FrequentNodes = FrequentNodes()
-    var tail: FrequentNodes = FrequentNodes()
+
+    // Keep track of the frequency to achieve O(1)
+    // Map: frequency -> nodes (key, val, freq)
+    // 1 -> (A, 10, 1), (B, 11, 1)
+    // 2 -> (C, 12, 2)
+    // When it is a tie (nodes having the same frequency), the order will be MRU -> LRU.
     var frequencyToNodeMap = hashMapOf<Int, FrequentNodes>()
 
     // key -> Node
     // (A) -> (A, 10, 1)
     var dataStore = hashMapOf<Int, Node>()
 
-
-    // A doubly linked list
-    // (head) <-> (most frequently used item) <-> (...) <-> (least frequently used item) <-> (tail)
-
-    // capacity: 3
-    // Given: (head) <-> (A, 3) <-> (B, 2) <-> (C, 1) <-> (tail)
-    // When: get(C). C is now accessed twice, as well as (B), but it is recently used, so swap the position.
-    // Then: (head) <-> (A, 3) <-> (C, 2) <-> (B, 2) <-> (tail)
-
-    init {
-        // (h) <-> (t)
-
-    }
 
     /**
      * Gets the value of the key if the key exists in the cache. Otherwise, returns -1.
@@ -114,7 +100,6 @@ class LFUCache(val capacity: Int) {
         val node = dataStore.get(key)
         return if (node != null) {
             _promoteNode(node)
-
             node.value
         } else {
             -1
