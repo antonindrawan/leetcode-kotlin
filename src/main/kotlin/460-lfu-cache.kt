@@ -12,9 +12,87 @@ class LFUCache(val capacity: Int) {
         }
     }
 
+    // Keep track of the frequency to achieve O(1)
+    // Map: frequency -> nodes (key, val, freq)
+    // 1 -> (A, 10, 1), (B, 11, 1)
+    // 2 -> (C, 12, 2)
+    // When it is a tie (nodes having the same frequency), the order will be MRU -> LRU.
+
+    class FrequentNodes () {
+        // list of nodes in a least recently order
+        //  [most recently used node, ..., least recently used node]
+        var nodeList = listOf<Node>() // TODO: do we need this?
+
+        // define the order in the list
+        // (head) <-> (most recently used node) <->  ... <-> (least recently used node) <-> (tail)
+        var head: Node = Node() // most recently used
+        var tail: Node = Node() // least recently used
+
+        init {
+            head.next = tail
+            tail.prev = head
+        }
+
+        /**
+         * Adds a node after the head sentinel
+         *
+         * Given: (head) <-> (tail)
+         * When: (A) is added
+         * Then: (head) <-> (A) <-> (tail)
+         */
+        fun addNodeToFront(node: Node) {
+            var headNext = head.next
+            node.prev = head
+            node.next = headNext
+
+            headNext?.prev = node
+            head.next = node
+        }
+
+        /**
+         * Removes the given node from the list
+         *
+         * Given: (head) <-> (A) <-> (tail)
+         * When: (A) is removed
+         * Then: (head) <-> (tail)
+         */
+        fun removeNode(node: Node) {
+            var prev = node.prev
+            var next = node.next
+
+            prev?.next = next
+            next?.prev = prev
+
+            node.prev = null
+            node.next = null
+        }
+
+        /**
+         * Gets the last node from the tail
+         *
+         * Given: (head) <-> (A) <-> (tail)
+         * Returns (A)
+         */
+        fun getLruNode() : Node {
+            assert(tail.prev != head)
+            assert(tail.prev != null)
+            return tail.prev!!
+        }
+
+        fun empty() : Boolean {
+            return (head.next == tail && tail.prev == head)
+        }
+    }
+
+    var minFrequency = 0
+    var head: FrequentNodes = FrequentNodes()
+    var tail: FrequentNodes = FrequentNodes()
+    var frequencyToNodeMap = hashMapOf<Int, FrequentNodes>()
+
     // key -> Node
+    // (A) -> (A, 10, 1)
     var dataStore = hashMapOf<Int, Node>()
-    
+
 
     // A doubly linked list
     // (head) <-> (most frequently used item) <-> (...) <-> (least frequently used item) <-> (tail)
@@ -24,13 +102,9 @@ class LFUCache(val capacity: Int) {
     // When: get(C). C is now accessed twice, as well as (B), but it is recently used, so swap the position.
     // Then: (head) <-> (A, 3) <-> (C, 2) <-> (B, 2) <-> (tail)
 
-    var head: Node = Node()
-    var tail: Node = Node()
-
     init {
         // (h) <-> (t)
-        head.next = tail
-        tail.prev = head
+
     }
 
     /**
@@ -39,7 +113,6 @@ class LFUCache(val capacity: Int) {
     fun get(key: Int): Int {
         val node = dataStore.get(key)
         return if (node != null) {
-            // promote the node
             _promoteNode(node)
 
             node.value
@@ -55,81 +128,68 @@ class LFUCache(val capacity: Int) {
 
         val node = dataStore.get(key)
         if (node != null) {
-            // update, increment the frequency and promote the node
+            // update, and promote the node
             node.value = value
 
             _promoteNode(node)
         } else {
             if (dataStore.size == capacity) {
-                val lfuNode = tail.prev
-                if (lfuNode != null) {
-                    _removeNode(lfuNode)
-                    dataStore.remove(lfuNode.key)
+
+                assert (minFrequency > 0)
+                val frequentNodes =  frequencyToNodeMap[minFrequency]
+                if (frequentNodes != null) {
+                    val lruNode = frequentNodes.getLruNode()
+                    frequentNodes.removeNode(lruNode)
+                    if (frequentNodes.empty()) {
+                        frequencyToNodeMap.remove(minFrequency)
+                    }
+
+                    dataStore.remove(lruNode.key)
                 }
             }
 
-            // create a new node and push it to the dataStore with accessedCount 1
             val newNode = Node(key, value, 0)
             dataStore.put(key, newNode)
-
-            // Register the node before the tail, because it is least frequently used
-            _insertNodeAfterTarget(newNode, tail.prev!!)
-
-            // Shift to the more frequently used if the frequency is the same as the adjacent
+            minFrequency = 1
             _promoteNode(newNode)
         }
     }
 
     private fun _promoteNode(node: Node) {
-        // Given a tie condition: (A, 1), (B, 1), (C, 1)
+        // Given a tie condition: [1] -> (A, 1), (B, 1), (C, 1)
+        //                        [2] -> (D, 2)
         // When: (C, 1) is promoted
-        // Then: (C, 1), (A, 1), (B, 1)
+        // Then: Remove (C, 1) from frequentNodes [1] and add it to [2]
+        //        [1] -> (A, 1), (B, 1)
+        //        [2] -> (C, 2), (D, 2)
 
-        // Given: (head), (D, 2), (E, 2), (A, 1), (B, 1), (C, 1)
-        // When: (B, 1) just gets accessed, it becomes (B, 2)
-        // Then: (head), (B, 2), (D, 2), (E, 2), (A, 1), (C, 1)
+        // removal the node from existing frequencyNodes
+        if (node.accessedCount > 0) {
+            val frequentNodes = frequencyToNodeMap[node.accessedCount]
 
-        node.accessedCount += 1
+            if (frequentNodes != null) {
+                frequentNodes.removeNode(node)
+                if (frequentNodes.empty()) {
+                    frequencyToNodeMap.remove(node.accessedCount)
 
-        // find the target node which is accessed higher than current (TODO: This is not efficient)
-        var prev = node.prev
-        while (prev != head && prev != null && node.accessedCount >= prev.accessedCount) {
-            prev = prev.prev
+                    // update the minimum
+                    if (minFrequency == node.accessedCount) {
+                        minFrequency += 1
+                    }
+                }
+            }
         }
 
-        _removeNode(node)
-
-        // prev is either the head or a higher frequently accessed node
-        // prev is guaranteed to be non-null
-        _insertNodeAfterTarget(node, prev!!)
-    }
-
-    //
-    private fun _insertNodeAfterTarget(node: Node, targetNode: Node) {
-        // Given: (target) <-> (tail) (or (A) node)
-        // When: Insert (n)
-        // Then: (target) <-> (n) <-> (tail) (or (A) node)
-        val targetNodeNext = targetNode.next
-
-        node.prev = targetNode
-        node.next = targetNodeNext
-
-        targetNode.next = node
-        targetNodeNext?.prev = node
-    }
-
-    private fun _removeNode(node: Node) {
-        // Given: (1) <-> (node) <-> (2)
-        // When: (node) is removed)
-        // Then: (1) <-> (2)
-        val next = node.next
-        val prev = node.prev
-        next?.prev = prev
-        prev?.next = next
-
-        // unset (optionally)
-        node.prev = null
-        node.next = null
+        // adding part
+        node.accessedCount += 1
+        var frequentNodes = frequencyToNodeMap[node.accessedCount]
+        if (frequentNodes != null) {
+            frequentNodes.addNodeToFront(node)
+        } else {
+            frequentNodes = FrequentNodes()
+            frequentNodes.addNodeToFront(node)
+            frequencyToNodeMap.put(node.accessedCount, frequentNodes)
+        }
     }
 }
 
@@ -138,8 +198,8 @@ fun main() {
     var command = listOf("LFUCache", "put", "put", "get", "put", "get", "get", "put", "get", "get", "get")
     var params = listOf(2, Pair(1, 1), Pair(2, 2), 1, Pair(3, 3), 2, 3, Pair(4, 4), 1, 3, 4)
 
-    command = listOf("LFUCache","put","get")
-    params = listOf(0, Pair(0 , 0),0)
+    //command = listOf("LFUCache","put","get")
+    //params = listOf(0, Pair(0 , 0),0)
 
     val lfu = LFUCache(params[0] as Int);
     var output = ""
