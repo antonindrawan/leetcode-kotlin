@@ -43,7 +43,7 @@ class SudokuSolver {
     fun solve(board: Array<CharArray>, row: Int, col: Int): Boolean {
 
         for (number in '1'..'9') {
-            if (!numberUsedInRow(board, number, row) && !numberUsedInCol(board, number, col) && !numberUsedInSubBox(board, number, row, col)) {
+            if (checkRowCol(board, number, row, col) && checkSubBox(board, number, row, col)) {
                 board[row][col] = number
 
                 val nextCell = getNextEmptyCell(board, row, col)
@@ -59,27 +59,16 @@ class SudokuSolver {
         return false // true
     }
 
-    fun numberUsedInRow(board: Array<CharArray>, number: Char, row: Int): Boolean {
+    fun checkRowCol(board: Array<CharArray>, number: Char, row: Int, col: Int): Boolean {
         for (i in 0..8) {
-            val cell = board[row][i]
-            if (cell != '.' && cell == number) {
-                return true
+            if (board[row][i] == number || board[i][col] == number) {
+                return false
             }
         }
-        return false
+        return true
     }
 
-    fun numberUsedInCol(board: Array<CharArray>, number: Char, col: Int): Boolean {
-        for (i in 0..8) {
-            val cell = board[i][col]
-            if (cell != '.' && cell == number) {
-                return true
-            }
-        }
-        return false
-    }
-
-    fun numberUsedInSubBox(board: Array<CharArray>, number: Char, row: Int, col: Int): Boolean {
+    fun checkSubBox(board: Array<CharArray>, number: Char, row: Int, col: Int): Boolean {
         val beginRow = (row / 3) * 3
         val beginCol = (col / 3) * 3
 
@@ -87,11 +76,11 @@ class SudokuSolver {
             for (j in beginCol..beginCol + 2) {
                 val cell = board[i][j]
                 if (cell != '.' && cell == number) {
-                    return true
+                    return false
                 }
             }
         }
-        return false
+        return true
     }
 }
 
