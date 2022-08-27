@@ -10,7 +10,7 @@ class GroupAnagrams {
         var anagramGroup : HashMap<String, MutableList<String>> = hashMapOf()
         strs.forEach {
             var sortedVal = it.toCharArray().sorted().joinToString("")
-            var anagramList: MutableList<String>? = anagramGroup[sortedVal]
+            /*var anagramList: MutableList<String>? = anagramGroup[sortedVal]
             if (anagramList != null) {
                 // append (it) to the list
                 anagramList.add(it)
@@ -18,7 +18,11 @@ class GroupAnagrams {
                 // put it on the hash map
                 var anagram = mutableListOf(it)
                 anagramGroup.put(sortedVal, anagram)
-            }
+            }*/
+
+            // the commented out code above can be replace by the following code
+            anagramGroup[sortedVal] = anagramGroup.getOrDefault(sortedVal, mutableListOf())
+                .apply { add(it) }
         }
 
         return anagramGroup.values.toList()
